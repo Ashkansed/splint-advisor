@@ -1,0 +1,270 @@
+.app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  margin-bottom: 2rem;
+}
+
+.header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.tagline {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.main {
+  flex: 1;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.label {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.label.optional {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.textarea,
+.input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.textarea:focus,
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface-hover);
+}
+
+.textarea::placeholder,
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.btn {
+  align-self: flex-start;
+  padding: 0.65rem 1.25rem;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s, opacity 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--surface-hover);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.card.error {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.card p {
+  margin: 0 0 0.5rem;
+}
+
+.card p:last-child {
+  margin-bottom: 0;
+}
+
+.splint-name {
+  color: var(--accent);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-top: 0.5rem;
+}
+
+.badge.confidence-high {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.badge.confidence-medium {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.badge.confidence-low {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.alternatives {
+  margin-top: 0.75rem;
+}
+
+.alternatives ul {
+  margin: 0.25rem 0 0 1.25rem;
+  padding: 0;
+}
+
+.precautions {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.disclaimer {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.case-id {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.case-id code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--surface);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
+
+.result {
+  margin-top: 1rem;
+}
+
+.result-actions {
+  margin: 1rem 0;
+}
+
+.suggested-dx,
+.nih-terms {
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.nih-splints {
+  margin-top: 0.75rem;
+}
+
+.nih-splints ul {
+  margin: 0.25rem 0 0 1.25rem;
+  padding: 0;
+}
+
+.nih-card .nih-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nih-card .nih-list li {
+  margin-bottom: 0.5rem;
+}
+
+.nih-card .nih-list a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.nih-card .nih-list a:hover {
+  text-decoration: underline;
+}
+
+.card.other-rec ul {
+  margin: 0.25rem 0 0 1.25rem;
+  padding: 0;
+}
+
+.footer {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.footer code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: var(--surface);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
