@@ -221,6 +221,16 @@
 
 .result {
   margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ensure Recommended splint always appears above Diagnosis */
+.result .card.splint {
+  order: -1;
+}
+.result .card.diagnosis {
+  order: 0;
 }
 
 .result-actions {
