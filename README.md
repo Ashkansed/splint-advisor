@@ -71,6 +71,10 @@ API endpoints:
 - `GET /nih-search?q=...` – Standalone NIH/PubMed search for orthopaedic/splint literature.
 - `GET /manufacturing-url?ip=...` – URL to open for “locate printer by IP” (optional `ip` query param).
 
+## Moltbook – therapy for bots
+
+Want other **AI agents** (on [Moltbook](https://moltbook.com)) to get splint recommendations? Bots can sign in with Moltbook and call the same `/diagnose` API. See **[MOLTBOOK.md](MOLTBOOK.md)** for setup and the auth URL to give bots.
+
 ## Putting it online (so friends can test)
 
 See **[DEPLOY.md](DEPLOY.md)** for step-by-step instructions:

@@ -10,11 +10,13 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from fuzzy_aggregator import aggregate_two_agents
 from nih import nih_suggest_splints_and_diagnosis, search_pubmed
 
 load_dotenv()
@@ -28,15 +30,22 @@ except Exception:
 
 app = FastAPI(title="Splint Advisor API", version="2.0.0")
 
-# CORS: when deployed, set CORS_ORIGINS to your frontend URL(s), e.g. https://your-app.vercel.app
-_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").strip().split(",")
-_cors_origins = [o.strip() for o in _cors_origins if o.strip()]
+# CORS: when deployed, set CORS_ORIGINS to your frontend URL(s), e.g. https://splint-advisor.vercel.app
+# Use CORS_ORIGINS=* to allow all origins (no credentials in that case).
+_cors_origins_env = (os.getenv("CORS_ORIGINS") or "http://localhost:5173,http://127.0.0.1:5173").strip()
+if _cors_origins_env == "*":
+    _cors_origins = ["*"]
+    _cors_credentials = False
+else:
+    _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+    _cors_credentials = True
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=_cors_credentials,
+    allow_methods=["GET", "POST", "OPTIONS", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -44,6 +53,32 @@ DATA_DIR.mkdir(exist_ok=True)
 CASES_FILE = DATA_DIR / "cases.jsonl"
 FINE_TUNE_FILE = DATA_DIR / "fine_tune_dataset.jsonl"
 URGENT_CARE_FILE = DATA_DIR / "urgent_care_cases.jsonl"  # For urgent care / PA fine-tuning
+
+# Moltbook: optional bot identity (https://moltbook.com/developers)
+MOLTBOOK_APP_KEY = os.getenv("MOLTBOOK_APP_KEY")
+MOLTBOOK_AUDIENCE = os.getenv("MOLTBOOK_AUDIENCE")  # e.g. splint-advisor-api.onrender.com (optional)
+
+
+async def verify_moltbook_token(token: str) -> dict | None:
+    """Verify Moltbook identity token; returns agent dict or None if invalid/unconfigured."""
+    if not MOLTBOOK_APP_KEY or not token:
+        return None
+    payload: dict = {"token": token}
+    if MOLTBOOK_AUDIENCE:
+        payload["audience"] = MOLTBOOK_AUDIENCE
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(
+                "https://moltbook.com/api/v1/agents/verify-identity",
+                headers={"X-Moltbook-App-Key": MOLTBOOK_APP_KEY, "Content-Type": "application/json"},
+                json=payload,
+            )
+            data = r.json()
+            if data.get("valid") and data.get("agent"):
+                return data["agent"]
+    except Exception:
+        pass
+    return None
 
 
 class ProblemInput(BaseModel):
@@ -70,6 +105,11 @@ class DiagnosisResponse(BaseModel):
     nih_articles: list[dict] | None = None  # PubMed results
     additional_splints_from_nih: list[str] | None = None
     suggested_diagnosis_terms_from_nih: list[str] | None = None
+    # Fuzzy aggregation of two agents (PA + NIH)
+    fused_confidence_numeric: int | None = None  # 0–100
+    alternatives_with_scores: list[dict] | None = None  # [{splint_name, source, membership}]
+    aggregated_diagnosis_terms: list[dict] | None = None  # [{term, source, weight}]
+    fused_recommendations: list[dict] | None = None  # [{recommendation, source, priority}]
 
 
 # Rule-based fallback when no OpenAI key or API error
@@ -177,7 +217,7 @@ def ai_diagnosis(problem: str, optional_context: str | None) -> dict | None:
     return result
 
 
-def save_case(case_id: str, input_data: dict, response: dict, source: str = "api"):
+def save_case(case_id: str, input_data: dict, response: dict, source: str = "api", moltbook_agent: dict | None = None):
     """Append case to JSONL for review and fine-tuning."""
     record = {
         "case_id": case_id,
@@ -186,6 +226,8 @@ def save_case(case_id: str, input_data: dict, response: dict, source: str = "api
         "input": input_data,
         "output": response,
     }
+    if moltbook_agent:
+        record["moltbook_agent"] = {"id": moltbook_agent.get("id"), "name": moltbook_agent.get("name"), "karma": moltbook_agent.get("karma")}
     with open(CASES_FILE, "a") as f:
         f.write(json.dumps(record) + "\n")
     ft_line = {
@@ -198,7 +240,7 @@ def save_case(case_id: str, input_data: dict, response: dict, source: str = "api
         f.write(json.dumps(ft_line) + "\n")
 
 
-def save_urgent_care_case(case_id: str, input_data: dict, response: dict):
+def save_urgent_care_case(case_id: str, input_data: dict, response: dict, moltbook_agent: dict | None = None):
     """Append case to urgent_care_cases.jsonl for urgent care / PA fine-tuning."""
     record = {
         "case_id": case_id,
@@ -216,18 +258,26 @@ def save_urgent_care_case(case_id: str, input_data: dict, response: dict):
             "suggested_diagnosis_terms_from_nih": response.get("suggested_diagnosis_terms_from_nih"),
         },
     }
+    if moltbook_agent:
+        record["moltbook_agent"] = {"id": moltbook_agent.get("id"), "name": moltbook_agent.get("name"), "karma": moltbook_agent.get("karma")}
     with open(URGENT_CARE_FILE, "a") as f:
         f.write(json.dumps(record) + "\n")
 
 
 @app.post("/diagnose", response_model=DiagnosisResponse)
-def diagnose(problem_input: ProblemInput):
-    """Submit a potential problem; returns diagnosis, splint, PA/urgent care suggestions, and NIH-based suggestions. Logs JSON for physicians and urgent care."""
+async def diagnose(
+    problem_input: ProblemInput,
+    x_moltbook_identity: str | None = Header(None, alias="X-Moltbook-Identity"),
+):
+    """Submit a potential problem; returns diagnosis, splint, PA/urgent care suggestions, and NIH-based suggestions. Logs JSON for physicians and urgent care. Optional X-Moltbook-Identity header for bot identity (Moltbook)."""
     case_id = str(uuid.uuid4())
     problem = (problem_input.problem or "").strip()
     if not problem:
         raise HTTPException(status_code=400, detail="Please provide a problem description.")
 
+    moltbook_agent = await verify_moltbook_token(x_moltbook_identity or "")
+
+    # Agent 1: PA/urgent care (or rule-based fallback)
     result = ai_diagnosis_pa_urgent_care(problem, problem_input.optional_context)
     if result is None:
         result = rule_based_diagnosis(problem)
@@ -236,36 +286,54 @@ def diagnose(problem_input: ProblemInput):
 
     rec = result["recommended_splint"]
     if isinstance(rec, dict):
+        primary_splint_name = rec.get("splint_name", "Unknown")
+    else:
+        primary_splint_name = str(rec)
+
+    # Agent 2: NIH/PubMed suggestions
+    nih_data = nih_suggest_splints_and_diagnosis(problem, primary_splint_name)
+    agent2_result = {
+        "nih_articles": nih_data["nih_articles"],
+        "additional_splints_from_nih": nih_data["additional_splints_from_nih"],
+        "suggested_diagnosis_terms_from_nih": nih_data["suggested_diagnosis_terms"],
+    }
+
+    # Fuzzy aggregation of both agents
+    fused = aggregate_two_agents(result, agent2_result, w_clinical=0.7)
+
+    rec_fused = fused["recommended_splint"]
+    if isinstance(rec_fused, dict):
+        alt_names = [a.get("splint_name", a) for a in fused.get("alternatives_with_scores", []) if isinstance(a, dict)]
+        if not alt_names and rec_fused.get("alternatives"):
+            alt_names = rec_fused["alternatives"]
         rec_obj = SplintRecommendation(
-            splint_name=rec.get("splint_name", "Unknown"),
-            rationale=rec.get("rationale", ""),
-            alternatives=rec.get("alternatives"),
-            precautions=rec.get("precautions"),
+            splint_name=rec_fused.get("splint_name", primary_splint_name),
+            rationale=rec_fused.get("rationale", ""),
+            alternatives=alt_names or rec_fused.get("alternatives"),
+            precautions=rec_fused.get("precautions"),
         )
     else:
-        rec_obj = SplintRecommendation(splint_name=str(rec), rationale=result.get("rationale", ""))
-
-    # NIH/PubMed search for additional splints and diagnosis terms
-    nih_data = nih_suggest_splints_and_diagnosis(problem, rec_obj.splint_name)
-    result["nih_articles"] = nih_data["nih_articles"]
-    result["additional_splints_from_nih"] = nih_data["additional_splints_from_nih"]
-    result["suggested_diagnosis_terms_from_nih"] = nih_data["suggested_diagnosis_terms"]
+        rec_obj = SplintRecommendation(splint_name=str(rec_fused), rationale=result.get("rationale", ""))
 
     response_dict = {
         "case_id": case_id,
-        "diagnosis_summary": result.get("diagnosis_summary", ""),
+        "diagnosis_summary": fused.get("diagnosis_summary", ""),
         "recommended_splint": rec_obj.model_dump(),
-        "confidence": result.get("confidence", "medium"),
+        "confidence": fused.get("confidence", "medium"),
         "disclaimer": "This is an advisory tool only. Always confirm with a qualified clinician.",
-        "suggested_diagnosis": result.get("suggested_diagnosis"),
-        "other_recommendations": result.get("other_recommendations") or [],
-        "nih_articles": result.get("nih_articles"),
-        "additional_splints_from_nih": result.get("additional_splints_from_nih"),
-        "suggested_diagnosis_terms_from_nih": result.get("suggested_diagnosis_terms_from_nih"),
+        "suggested_diagnosis": fused.get("suggested_diagnosis"),
+        "other_recommendations": fused.get("other_recommendations") or [],
+        "nih_articles": fused.get("nih_articles"),
+        "additional_splints_from_nih": fused.get("additional_splints_from_nih"),
+        "suggested_diagnosis_terms_from_nih": fused.get("suggested_diagnosis_terms_from_nih"),
+        "fused_confidence_numeric": fused.get("fused_confidence_numeric"),
+        "alternatives_with_scores": fused.get("alternatives_with_scores"),
+        "aggregated_diagnosis_terms": fused.get("aggregated_diagnosis_terms"),
+        "fused_recommendations": fused.get("fused_recommendations"),
     }
 
-    save_case(case_id, {"problem": problem, "optional_context": problem_input.optional_context}, response_dict)
-    save_urgent_care_case(case_id, {"problem": problem, "optional_context": problem_input.optional_context}, response_dict)
+    save_case(case_id, {"problem": problem, "optional_context": problem_input.optional_context}, response_dict, moltbook_agent=moltbook_agent)
+    save_urgent_care_case(case_id, {"problem": problem, "optional_context": problem_input.optional_context}, response_dict, moltbook_agent=moltbook_agent)
 
     return DiagnosisResponse(**response_dict)
 
@@ -288,6 +356,24 @@ def get_manufacturing_url(ip: str | None = Query(None, description="Optional cli
     if ip:
         return {"url": f"{base}?ip={ip}", "message": "Open in new tab to locate printer / manufacturing by IP or location."}
     return {"url": base, "message": "Open in new tab to locate printer / manufacturing."}
+
+
+@app.get("/moltbook-auth-url")
+def get_moltbook_auth_url(api_base: str | None = Query(None, description="Override API base URL (default: request host)")):
+    """
+    Return Moltbook auth instructions URL for bots. Bots read this URL to learn how to authenticate.
+    Set MOLTBOOK_APP_KEY on the backend to enable Moltbook identity. Optional: set API_BASE_URL env for deployed docs.
+    """
+    base = api_base or os.getenv("API_BASE_URL", "").rstrip("/")
+    if not base:
+        return {
+            "auth_instructions_url": None,
+            "message": "Set API_BASE_URL env to your deployed backend URL (e.g. https://splint-advisor-api.onrender.com) to get auth URL for bots.",
+            "diagnose_endpoint": "/diagnose",
+        }
+    endpoint = f"{base}/diagnose"
+    auth_url = f"https://moltbook.com/auth.md?app=Splint%20Advisor&endpoint={endpoint}"
+    return {"auth_instructions_url": auth_url, "diagnose_endpoint": endpoint, "message": "Give this URL to bots so they can sign in with Moltbook and get splint recommendations."}
 
 
 @app.get("/cases")
@@ -336,6 +422,18 @@ def export_urgent_care():
         return {"path": str(URGENT_CARE_FILE), "count": 0, "message": "No urgent care cases yet."}
     count = sum(1 for _ in open(URGENT_CARE_FILE))
     return {"path": str(URGENT_CARE_FILE), "count": count, "format": "JSONL (urgent care / PA fine-tuning)"}
+
+
+@app.get("/")
+def root():
+    """Root route so GET / doesn't 404 (e.g. Render health check)."""
+    return {
+        "service": "Splint Advisor API",
+        "docs": "/docs",
+        "health": "/health",
+        "diagnose": "POST /diagnose",
+        "moltbook": "GET /moltbook-auth-url (auth URL for bots); optional X-Moltbook-Identity on POST /diagnose",
+    }
 
 
 @app.get("/health")

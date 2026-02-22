@@ -35,7 +35,10 @@ export default function App() {
       const data = await res.json()
       setResult(data)
     } catch (err) {
-      setError(err.message || 'Something went wrong.')
+      const isNetwork = err.message === 'Failed to fetch' || err.name === 'TypeError'
+      setError(isNetwork
+        ? 'Could not reach the server. If this is the live site, check: (1) VITE_API_URL is set in Vercel to your Render backend URL, (2) CORS_ORIGINS on Render includes this site, (3) Render service is awake (first request may take 30–60 s).'
+        : err.message || 'Something went wrong.')
     } finally {
       setLoading(false)
     }
@@ -51,9 +54,26 @@ export default function App() {
     }
   }
 
+  function handle3DScan() {
+    // Open 3D scanning flow (e.g. external scanner app or in-app flow)
+    window.open('https://www.google.com/search?q=3d+scanning+app+orthotics', '_blank', 'noopener,noreferrer')
+  }
+
+  function handleConfirmDesign() {
+    if (result?.case_id) {
+      // Confirm current design; could POST to backend or open next step
+      alert(`Design confirmed for case ${result.case_id}. Ready for manufacturing.`)
+    } else {
+      alert('Get a splint recommendation first, then confirm the design.')
+    }
+  }
+
   return (
     <div className="app">
       <header className="header">
+        <a href="/" className="logo-link" aria-label="Dimension Ortho home">
+          <img src="/logo.png" alt="Dimension Ortho" className="logo" />
+        </a>
         <h1>Splint Advisor</h1>
         <p className="tagline">Upper extremity problem → recommended splint (PA / urgent care context)</p>
       </header>
@@ -159,6 +179,12 @@ export default function App() {
             )}
 
             <div className="result-actions">
+              <button type="button" className="btn btn-secondary" onClick={handle3DScan}>
+                3D scanning
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={handleConfirmDesign}>
+                Confirm design
+              </button>
               <button type="button" className="btn btn-secondary" onClick={openManufacturing}>
                 Submit to manufacturing — locate printer (by IP)
               </button>
