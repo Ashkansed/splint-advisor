@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import './App.css'
 
 // When deployed, set VITE_API_URL to your backend URL (e.g. https://your-app.onrender.com)
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 export default function App() {
+  const navigate = useNavigate()
   const [problem, setProblem] = useState('')
   const [context, setContext] = useState('')
   const [loading, setLoading] = useState(false)
@@ -55,8 +57,7 @@ export default function App() {
   }
 
   function handle3DScan() {
-    // Open 3D scanning flow (e.g. external scanner app or in-app flow)
-    window.open('https://www.google.com/search?q=3d+scanning+app+orthotics', '_blank', 'noopener,noreferrer')
+    navigate('/scan')
   }
 
   function handleConfirmDesign() {
@@ -71,9 +72,9 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <a href="/" className="logo-link" aria-label="Dimension Ortho home">
+        <Link to="/" className="logo-link" aria-label="Dimension Ortho home">
           <img src="/logo.png" alt="Dimension Ortho" className="logo" />
-        </a>
+        </Link>
         <h1>Splint Advisor</h1>
         <p className="tagline">Upper extremity problem → recommended splint (PA / urgent care context)</p>
       </header>
@@ -186,7 +187,7 @@ export default function App() {
                 Confirm design
               </button>
               <button type="button" className="btn btn-secondary" onClick={openManufacturing}>
-                Submit to manufacturing — locate printer (by IP)
+                Submit to nearest 3D Printer
               </button>
             </div>
 
