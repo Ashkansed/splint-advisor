@@ -111,31 +111,6 @@ export default function App() {
 
         {result && (
           <div className="result">
-            <div className="card diagnosis">
-              <h2>Diagnosis</h2>
-              <p>{result.diagnosis_summary}</p>
-              {result.suggested_diagnosis && (
-                <p className="suggested-dx"><strong>Suggested problem (PA/urgent care):</strong> {result.suggested_diagnosis}</p>
-              )}
-              {result.suggested_diagnosis_terms_from_nih?.length > 0 && (
-                <p className="nih-terms"><strong>NIH literature terms:</strong> {result.suggested_diagnosis_terms_from_nih.join(', ')}</p>
-              )}
-              <span className={`badge confidence-${result.confidence}`}>
-                Confidence: {result.confidence}
-              </span>
-            </div>
-
-            {result.other_recommendations?.length > 0 && (
-              <div className="card other-rec">
-                <h2>Other recommendations (beyond splint)</h2>
-                <ul>
-                  {result.other_recommendations.map((r, i) => (
-                    <li key={i}>{r}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
             <div className="card splint">
               <h2>Recommended splint</h2>
               <h3 className="splint-name">{result.recommended_splint.splint_name}</h3>
@@ -164,6 +139,31 @@ export default function App() {
                 <p className="precautions">{result.recommended_splint.precautions}</p>
               )}
             </div>
+
+            <div className="card diagnosis">
+              <h2>Diagnosis</h2>
+              <p>{result.diagnosis_summary}</p>
+              {result.suggested_diagnosis && (
+                <p className="suggested-dx"><strong>Suggested problem (PA/urgent care):</strong> {result.suggested_diagnosis}</p>
+              )}
+              {result.suggested_diagnosis_terms_from_nih?.length > 0 && (
+                <p className="nih-terms"><strong>NIH literature terms:</strong> {result.suggested_diagnosis_terms_from_nih.join(', ')}</p>
+              )}
+              <span className={`badge confidence-${result.confidence}`}>
+                Confidence: {result.confidence}
+              </span>
+            </div>
+
+            {result.other_recommendations?.length > 0 && (
+              <div className="card other-rec">
+                <h2>Other recommendations (beyond splint)</h2>
+                <ul>
+                  {result.other_recommendations.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {result.nih_articles?.length > 0 && (
               <div className="card nih-card">
